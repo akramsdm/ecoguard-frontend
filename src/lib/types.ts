@@ -9,7 +9,7 @@ export interface CaseReport {id:string;code:string;client_id:string;category:Cat
 export interface Advisory {id:string; report_id?:string; version?:number; area_id:string; area_name:string; category:Category;title:string;body:string;source:string;state:string;expires_at:string;published_at:string|null;created_at:string;retraction_reason?:string;read?:boolean;latitude:number;longitude:number}
 export interface Prediction {id:string;state:string;species:string|null;confidence:number|null;boxes:unknown[];model_version:string;explanation:string}
 export interface Message {id:string;body:string;is_mine:boolean;sender_label:string;created_at:string}
-export interface Config {demo_enabled:boolean;image_assistance:string;sms:string;max_upload_mb:number;languages:string[]}
+export interface Config {demo_enabled:boolean;image_assistance:'ready'|'degraded'|'not_configured';sms:string;max_upload_mb:number;languages:string[]}
 export interface Dashboard {counts:Record<string,number>;states:Record<string,number>;categories:Record<string,number>;activity:{date:string;count:number}[];recent:CaseReport[];scope:string;note:string;ai_metrics:null}
 export interface Collection<T> {items:T[];total?:number;page?:number;page_size?:number}
 export interface GeoFeature {id:string;type:'Feature';geometry:{type:'Point';coordinates:[number,number]};properties:{id:string;title:string;category:Category;state:string;area_name:string;precision:string;kind:string}}

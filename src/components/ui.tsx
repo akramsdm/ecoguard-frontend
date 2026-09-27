@@ -36,7 +36,11 @@ export const date=(text?:string|null)=>text?new Intl.DateTimeFormat('en-UG',{dat
 export function Button({children,variant='',icon,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string;icon?:string}){return <button type="button" className={'btn '+variant} {...props}>{icon&&<Icon name={icon} size={18}/>} {children}</button>;}
 export function Brand(){return <a className="brand" href="#/community/home"><span className="mark"><Icon name="leaf"/></span><span>EcoGuard<small>UGANDA</small></span></a>;}
 export function Badge({children,tone=''}:{children:ReactNode;tone?:string}){return <span className={'tag '+tone}>{children}</span>;}
-export function State({state}:{state:string}){return <Badge tone={['verified','published','closed','completed'].includes(state)?'green':['rejected','retracted','failed'].includes(state)?'red':['under_review','needs_evidence','submitted','unavailable'].includes(state)?'amber':'gray'}>{nice(state)}</Badge>;}
+export function State({state,label}:{state:string;label?:string}){return <Badge tone={['verified','published','closed','completed'].includes(state)?'green':['rejected','retracted','failed'].includes(state)?'red':['under_review','needs_evidence','submitted','unavailable','unknown','degraded'].includes(state)?'amber':'gray'}>{label||nice(state)}</Badge>;}
+// Plain-language labels for image-assistance states, so a reporter is never shown a raw
+// state token and never reads a suggestion as a confirmed identification.
+export const PREDICTION_STATE:Record<string,string>={queued:'Queued',processing:'Processing',completed:'Suggestion ready',unknown:'Uncertain',unavailable:'Unavailable',failed:'Failed',not_requested:'Not requested'};
+export function PredictionState({state}:{state:string}){return <State state={state} label={PREDICTION_STATE[state]||nice(state)}/>;}
 export function Card({children,className=''}:{children:ReactNode;className?:string}){return <section className={'card '+className}>{children}</section>;}
 export function Notice({children,tone=''}:{children:ReactNode;tone?:string}){return <div className={'notice '+tone}>{children}</div>;}
 export function Empty({title='Nothing here yet',children,action}:{title?:string;children?:ReactNode;action?:ReactNode}){return <div className="empty"><span className="iconbox"><Icon name="leaf" size={27}/></span><h3>{title}</h3><p>{children||'New records will appear here when they are available.'}</p>{action}</div>;}

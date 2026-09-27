@@ -1,0 +1,129 @@
+import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {AppContext} from './lib/context';
+import type {AppContextType} from './lib/context';
+import {api,post,setCsrf} from './lib/api';
+import {loadDraft,removeDraft,saveDraft,newDraft} from './lib/drafts';
+import type {Area,Category,Config,Draft,User} from './lib/types';
+import {Button,Icon,Brand,Empty} from './components/ui';
+import {Welcome,SignIn,Home,Upload,Identify,ReportForm,ReviewSubmit,Success,Alerts,AlertDetail,MyReports,Progress,CommunityMap,Messages,Profile,Help} from './pages/Community';
+import {DashboardPage,ReportWorkspace,Verification,MapWorkspace,AlertCentre,Analytics,TeamSettings} from './pages/Workspace';
+import {Stakeholders} from './pages/Stakeholders';
+import {Screens} from './pages/Screens';
+import './styles.css';
+import './app.css';
+
+type Mode='community'|'workspace';
+type Route={mode:Mode;page:string;id:string};
+const STAFF_ROLES=['reviewer','publisher','responder','admin'];
+const PUBLIC_PAGES=['welcome','signin','help'];
+
+function readRoute():Route{
+  const[path,query='']=location.hash.replace(/^#\/?/,'').split('?');
+  const[mode,page]=path.split('/');
+  return {mode:mode==='workspace'?'workspace':'community',page:page||'home',id:new URLSearchParams(query).get('id')||''};
+}
+
+const COMMUNITY_NAV=[['home','home','Home'],['map','map','Map'],['myreports','file','My reports'],['alerts','bell','Advisories'],['profile','user','Profile']] as const;
+const WORKSPACE_NAV=[['dashboard','grid','Overview'],['reports','file','Reports'],['wildlife','paw','Wildlife'],['verify','check','Verification'],['map','map','Incident map'],['alerts','bell','Alert centre'],['analytics','chart','Analytics'],['team','settings','Team & settings']] as const;
+
+export function AppShell(){
+  const[route,setRoute]=useState<Route>(readRoute);
+  const[user,setUser]=useState<User|null>(null);
+  const[areas,setAreas]=useState<Area[]>([]);
+  const[config,setConfig]=useState<Config|null>(null);
+  const[draft,setDraft]=useState<Draft|null>(null);
+  const[refresh,setRefresh]=useState(0);
+  const[toast,setToast]=useState('');
+
+  useEffect(()=>{const on=()=>setRoute(readRoute());addEventListener('hashchange',on);
+    if(!location.hash)location.hash='#/community/home';
+    api<{user:User;csrf_token:string}>('/auth/me').then(x=>{setUser(x.user);setCsrf(x.csrf_token);
+      return loadDraft(x.user.id).then(d=>{if(d)setDraft(d)}).catch(()=>{});}).catch(()=>{});
+    api<Config>('/config').then(setConfig).catch(()=>{});
+    api<{items:Area[]}>('/areas').then(r=>setAreas(r.items)).catch(()=>{});
+    return()=>removeEventListener('hashchange',on);},[]);
+
+  const nav=useCallback((page:string,mode?:Mode,id='')=>{location.hash=`#/${mode||route.mode}/${page}${id?`?id=${id}`:''}`;},[route.mode]);
+  const userRef=useRef<User|null>(null);userRef.current=user;
+  useEffect(()=>{const on=()=>{if(userRef.current){setUser(null);setDraft(null);setCsrf('');location.hash='#/community/signin';}};
+    addEventListener('session-expired',on);return()=>removeEventListener('session-expired',on);},[]);
+  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),3800);return()=>clearTimeout(id);},[toast]);
+
+  const staff=!!user&&user.roles.some(r=>STAFF_ROLES.includes(r));
+  useEffect(()=>{if(user&&['welcome','signin'].includes(route.page))location.hash=`#/${staff?'workspace':'community'}/${staff?'dashboard':'home'}`;},[user,route.page,staff]);
+
+  const notify=useCallback((message:string)=>setToast(message),[]);
+  const changed=useCallback(()=>setRefresh(n=>n+1),[]);
+  const startDraft=useCallback((category:Category='wildlife')=>{if(user)setDraft(newDraft(user.id,category));},[user]);
+  const saveLocal=useCallback(async()=>{if(draft)await saveDraft(draft);},[draft]);
+  const logout=useCallback(async()=>{const id=user?.id;try{await post('/auth/logout',{});}finally{setUser(null);setCsrf('');setDraft(null);if(id)await removeDraft(id).catch(()=>{});location.hash='#/community/welcome';}},[]);
+
+  const value=useMemo<AppContextType>(()=>({user,setUser,areas,config,draft,setDraft,saveLocal,startDraft,notify,nav,logout,mode:route.mode,page:route.page,id:route.id,refresh,changed}),[user,areas,config,draft,route,refresh,saveLocal,startDraft,notify,nav,logout]);
+  const open=!!user||PUBLIC_PAGES.includes(route.page);
+
+  const body=!open?<SignIn/>:route.page==='welcome'?<Welcome/>:route.page==='signin'?<SignIn/>:route.page==='help'?<Help/>:route.mode==='workspace'?workspacePage(route.page):communityPage(route.page);
+  const navItems=route.mode==='workspace'&&staff?WORKSPACE_NAV:COMMUNITY_NAV;
+
+  return <AppContext.Provider value={value}>
+    <div className={'shell-app '+(route.mode==='workspace'&&staff?'workspace-mode':'community-mode')}>
+      <header className="shell-top">
+        <Brand/>
+        <nav className="shell-links">{navItems.map(([p,i,label])=><button key={p} className={route.page===p?'active':''} onClick={()=>nav(p,route.mode)}><Icon name={i} size={17}/><span>{label}</span></button>)}</nav>
+        <div className="shell-user">
+          {user&&route.mode!=='workspace'&&<span className="shell-cta"><Button icon="paw" onClick={()=>{startDraft('wildlife');nav('upload','community');}}><span className="cta-long">Report wildlife</span><span className="cta-short">Report</span></Button></span>}
+          {user&&<><span className="avatar">{user.name.slice(0,1).toUpperCase()}</span><span className="small">{user.name}</span></>}
+          {staff&&<Button variant="ghost small" onClick={()=>nav('home','community')}>Community view</Button>}
+          {user?<Button variant="ghost small" icon="logout" onClick={logout}>Sign out</Button>:<Button onClick={()=>nav('signin')}>Sign in</Button>}
+        </div>
+      </header>
+      <div className="shell-body">
+        {route.mode==='workspace'&&staff&&<aside className="shell-side"><div className="eyebrow">Pilot workspace</div>{WORKSPACE_NAV.map(([p,i,label])=><button key={p} className={'sideitem '+(route.page===p?'active':'')} onClick={()=>nav(p,'workspace')}><Icon name={i} size={18}/><span>{label}</span></button>)}</aside>}
+        <main className="shell-main">{body}</main>
+      </div>
+      {route.mode!=='workspace'&&user&&<nav className="shell-bottom">{COMMUNITY_NAV.map(([p,i,label])=><button key={p} className={route.page===p?'active':''} onClick={()=>nav(p,'community')}><Icon name={i} size={20}/><span>{label}</span></button>)}</nav>}
+      {route.mode!=='workspace'&&user&&<button className="shell-fab" onClick={()=>{startDraft('wildlife');nav('upload','community');}}><Icon name="paw" size={22}/><span>Report</span></button>}
+      {toast&&<div className="toast" role="status">{toast}</div>}
+    </div>
+  </AppContext.Provider>;
+}
+
+function communityPage(page:string){
+  switch(page){
+    case 'home':return <Home/>;
+    case 'upload':return <Upload/>;
+    case 'identify':return <Identify/>;
+    case 'wildlife':return <ReportForm category="wildlife"/>;
+    case 'wetland':return <ReportForm category="wetland"/>;
+    case 'flood':case 'floodreport':return <ReportForm category="flood"/>;
+    case 'review':return <ReviewSubmit/>;
+    case 'success':return <Success/>;
+    case 'myreports':return <MyReports/>;
+    case 'detail':return <Progress/>;
+    case 'alerts':return <Alerts/>;
+    case 'alertdetail':return <AlertDetail/>;
+    case 'map':return <CommunityMap/>;
+    case 'community':return <Messages/>;
+    case 'profile':return <Profile/>;
+    case 'stakeholders':return <Stakeholders/>;
+    case 'screens':return <Screens/>;
+    default:return <Empty title="Page not found" action={<Button onClick={()=>{location.hash='#/community/home'}}>Return home</Button>}/>;
+  }
+}
+
+function workspacePage(page:string){
+  switch(page){
+    case 'dashboard':return <DashboardPage/>;
+    case 'reports':return <ReportWorkspace/>;
+    case 'wildlife':return <ReportWorkspace category="wildlife" wildlifeGallery/>;
+    case 'wetland':return <ReportWorkspace category="wetland"/>;
+    case 'flood':return <ReportWorkspace category="flood"/>;
+    case 'verify':return <Verification/>;
+    case 'map':return <MapWorkspace/>;
+    case 'alerts':return <AlertCentre/>;
+    case 'analytics':return <Analytics/>;
+    case 'team':return <TeamSettings/>;
+    default:return <Empty title="Workspace page not found" action={<Button onClick={()=>{location.hash='#/workspace/dashboard'}}>Back to overview</Button>}/>;
+  }
+}
+
+export default AppShell;
