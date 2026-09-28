@@ -7,24 +7,30 @@ import type {Area,Category,Config,Draft,User} from './lib/types';
 import {Button,Icon,Brand,Empty} from './components/ui';
 import {Welcome,SignIn,Home,Upload,Identify,ReportForm,ReviewSubmit,Success,Alerts,AlertDetail,MyReports,Progress,CommunityMap,Messages,Profile,Help} from './pages/Community';
 import {DashboardPage,ReportWorkspace,Verification,MapWorkspace,AlertCentre,Analytics,TeamSettings} from './pages/Workspace';
+import {StaffLogin} from './pages/Staff';
+import {AdminPage} from './pages/Admin';
+import {canRenderWorkspace, canRenderWorkspacePage, isStaffUser, withAdminNav, STAFF_LANDING} from './lib/auth';
 import {Stakeholders} from './pages/Stakeholders';
 import {Screens} from './pages/Screens';
 import './styles.css';
 import './app.css';
 
 type Mode='community'|'workspace';
-type Route={mode:Mode;page:string;id:string};
-const STAFF_ROLES=['reviewer','publisher','responder','admin'];
+type Route={mode:Mode;page:string;id:string;tab:string;staffGate:boolean};
 const PUBLIC_PAGES=['welcome','signin','help'];
 
+/** #/staff/login is its own entry point, not a flag on the community login. */
 function readRoute():Route{
   const[path,query='']=location.hash.replace(/^#\/?/,'').split('?');
-  const[mode,page]=path.split('/');
-  return {mode:mode==='workspace'?'workspace':'community',page:page||'home',id:new URLSearchParams(query).get('id')||''};
+  const[head,page]=path.split('/');
+  const q=new URLSearchParams(query);
+  const id=q.get('id')||'',tab=q.get('tab')||'';
+  if(head==='staff')return {mode:'community',page:page||'login',id,tab,staffGate:true};
+  return {mode:head==='workspace'?'workspace':'community',page:page||'home',id,tab,staffGate:false};
 }
 
 const COMMUNITY_NAV=[['home','home','Home'],['map','map','Map'],['myreports','file','My reports'],['alerts','bell','Advisories'],['profile','user','Profile']] as const;
-const WORKSPACE_NAV=[['dashboard','grid','Overview'],['reports','file','Reports'],['wildlife','paw','Wildlife'],['verify','check','Verification'],['map','map','Incident map'],['alerts','bell','Alert centre'],['analytics','chart','Analytics'],['team','settings','Team & settings']] as const;
+const WORKSPACE_NAV=[['dashboard','grid','Overview'],['reports','file','Reports'],['wildlife','paw','Wildlife'],['wetland','leaf','Wetlands'],['verify','check','Verification'],['map','map','Incident map'],['alerts','bell','Alert centre'],['analytics','chart','Analytics'],['team','settings','Team & settings']] as const;
 
 export function AppShell(){
   const[route,setRoute]=useState<Route>(readRoute);
@@ -40,8 +46,11 @@ export function AppShell(){
     api<{user:User;csrf_token:string}>('/auth/me').then(x=>{setUser(x.user);setCsrf(x.csrf_token);
       return loadDraft(x.user.id).then(d=>{if(d)setDraft(d)}).catch(()=>{});}).catch(()=>{});
     api<Config>('/config').then(setConfig).catch(()=>{});
-    api<{items:Area[]}>('/areas').then(r=>setAreas(r.items)).catch(()=>{});
     return()=>removeEventListener('hashchange',on);},[]);
+
+  // The community list is cached server-side, so it is refetched whenever a change is
+  // reported: a newly created area would otherwise stay invisible until a full reload.
+  useEffect(()=>{api<{items:Area[]}>('/areas').then(r=>setAreas(r.items)).catch(()=>{});},[refresh]);
 
   const nav=useCallback((page:string,mode?:Mode,id='')=>{location.hash=`#/${mode||route.mode}/${page}${id?`?id=${id}`:''}`;},[route.mode]);
   const userRef=useRef<User|null>(null);userRef.current=user;
@@ -49,8 +58,18 @@ export function AppShell(){
     addEventListener('session-expired',on);return()=>removeEventListener('session-expired',on);},[]);
   useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),3800);return()=>clearTimeout(id);},[toast]);
 
-  const staff=!!user&&user.roles.some(r=>STAFF_ROLES.includes(r));
-  useEffect(()=>{if(user&&['welcome','signin'].includes(route.page))location.hash=`#/${staff?'workspace':'community'}/${staff?'dashboard':'home'}`;},[user,route.page,staff]);
+  const staff=isStaffUser(user);
+  useEffect(()=>{if(user&&['welcome','signin'].includes(route.page))location.hash=staff?STAFF_LANDING:`#/community/home`;},[user,route.page,staff]);
+
+  // Client-side staff guard. Only navigation was gated before, so a non-staff user who
+  // typed a #/workspace/* URL (or followed a stale link) was served the admin shell with
+  // every panel failing its requests. This is a UI fix, not a security boundary: the
+  // backend 403s every one of those endpoints on its own.
+  useEffect(()=>{
+    if(route.mode!=='workspace'||!user||canRenderWorkspace(user))return;
+    location.hash='#/community/home';
+    setToast('The workspace is for staff accounts. You are signed in as a community reporter.');
+  },[route.mode,route.page,user]);
 
   const notify=useCallback((message:string)=>setToast(message),[]);
   const changed=useCallback(()=>setRefresh(n=>n+1),[]);
@@ -58,11 +77,27 @@ export function AppShell(){
   const saveLocal=useCallback(async()=>{if(draft)await saveDraft(draft);},[draft]);
   const logout=useCallback(async()=>{const id=user?.id;try{await post('/auth/logout',{});}finally{setUser(null);setCsrf('');setDraft(null);if(id)await removeDraft(id).catch(()=>{});location.hash='#/community/welcome';}},[]);
 
-  const value=useMemo<AppContextType>(()=>({user,setUser,areas,config,draft,setDraft,saveLocal,startDraft,notify,nav,logout,mode:route.mode,page:route.page,id:route.id,refresh,changed}),[user,areas,config,draft,route,refresh,saveLocal,startDraft,notify,nav,logout]);
-  const open=!!user||PUBLIC_PAGES.includes(route.page);
+  const value=useMemo<AppContextType>(()=>({user,setUser,areas,config,draft,setDraft,saveLocal,startDraft,notify,nav,logout,mode:route.mode,page:route.page,id:route.id,tab:route.tab,refresh,changed}),[user,areas,config,draft,route,refresh,saveLocal,startDraft,notify,nav,logout]);
+  const staffGate=route.staffGate&&route.page==='login';
+  // Someone already holding a staff session has no use for the staff form.
+  useEffect(()=>{if(staffGate&&canRenderWorkspace(user))location.hash=STAFF_LANDING;},[staffGate,user]);
+  // The staff page is reachable signed out, so it joins the pages that are "open".
+  const open=staffGate||!!user||PUBLIC_PAGES.includes(route.page);
+  // A workspace page is never rendered for a non-staff account. The effect above clears
+  // the hash, but the check is repeated here so a single render can never paint the
+  // staff shell for a reporter, even for the frame before the redirect lands.
+  // Admin pages are gated one level further than the rest of the workspace.
+  const workspaceBlocked=route.mode==='workspace'&&!!user&&!canRenderWorkspacePage(user,route.page);
 
-  const body=!open?<SignIn/>:route.page==='welcome'?<Welcome/>:route.page==='signin'?<SignIn/>:route.page==='help'?<Help/>:route.mode==='workspace'?workspacePage(route.page):communityPage(route.page);
-  const navItems=route.mode==='workspace'&&staff?WORKSPACE_NAV:COMMUNITY_NAV;
+  const body=!open?<SignIn/>
+    :staffGate?<StaffLogin/>
+    :workspaceBlocked?<Empty title="Staff workspace" action={<Button onClick={()=>{location.hash='#/community/home'}}>Back to community home</Button>}/>
+    :route.page==='welcome'?<Welcome/>
+    :route.page==='signin'?<SignIn/>
+    :route.page==='help'?<Help/>
+    :route.mode==='workspace'?workspacePage(route.page)
+    :communityPage(route.page);
+  const navItems=route.mode==='workspace'&&staff&&!staffGate?withAdminNav(WORKSPACE_NAV,user):COMMUNITY_NAV;
 
   return <AppContext.Provider value={value}>
     <div className={'shell-app '+(route.mode==='workspace'&&staff?'workspace-mode':'community-mode')}>
@@ -70,10 +105,11 @@ export function AppShell(){
         <Brand/>
         <nav className="shell-links">{navItems.map(([p,i,label])=><button key={p} className={route.page===p?'active':''} onClick={()=>nav(p,route.mode)}><Icon name={i} size={17}/><span>{label}</span></button>)}</nav>
         <div className="shell-user">
-          {user&&route.mode!=='workspace'&&<span className="shell-cta"><Button icon="paw" onClick={()=>{startDraft('wildlife');nav('upload','community');}}><span className="cta-long">Report wildlife</span><span className="cta-short">Report</span></Button></span>}
+          {staffGate&&<Button variant="ghost small" onClick={()=>{location.hash='#/community/signin'}}>Community sign-in</Button>}
+          {user&&route.mode!=='workspace'&&!staffGate&&<span className="shell-cta"><Button icon="paw" onClick={()=>{startDraft('wildlife');nav('upload','community');}}><span className="cta-long">Report wildlife</span><span className="cta-short">Report</span></Button></span>}
           {user&&<><span className="avatar">{user.name.slice(0,1).toUpperCase()}</span><span className="small">{user.name}</span></>}
-          {staff&&<Button variant="ghost small" onClick={()=>nav('home','community')}>Community view</Button>}
-          {user?<Button variant="ghost small" icon="logout" onClick={logout}>Sign out</Button>:<Button onClick={()=>nav('signin')}>Sign in</Button>}
+          {staff&&!staffGate&&<Button variant="ghost small" onClick={()=>nav('home','community')}>Community view</Button>}
+          {user?<Button variant="ghost small" icon="logout" onClick={logout}>Sign out</Button>:!staffGate&&<Button onClick={()=>nav('signin')}>Sign in</Button>}
         </div>
       </header>
       <div className="shell-body">
@@ -113,6 +149,7 @@ function communityPage(page:string){
 function workspacePage(page:string){
   switch(page){
     case 'dashboard':return <DashboardPage/>;
+    case 'admin':return <AdminPage/>;
     case 'reports':return <ReportWorkspace/>;
     case 'wildlife':return <ReportWorkspace category="wildlife" wildlifeGallery/>;
     case 'wetland':return <ReportWorkspace category="wetland"/>;

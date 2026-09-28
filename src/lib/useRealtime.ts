@@ -9,7 +9,10 @@ function ensureStream() {
   const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
   const open = () => {
     try {
-      es = new EventSource(base + '/stream');
+      // withCredentials is required: the stream is session-authenticated, and a
+      // cross-origin EventSource (dev server on :5173, API on :8000) omits cookies
+      // without it. Harmless same-origin in production.
+      es = new EventSource(base + '/stream', { withCredentials: true });
       es.onmessage = () => listeners.forEach((l) => { try { l(); } catch {} });
       es.onerror = () => { /* EventSource reconnects automatically */ };
     } catch {
