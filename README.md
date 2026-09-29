@@ -85,13 +85,53 @@ feature is broken when it is simply not deployed.
 
 Project `ecoguard` → `https://ecoguard.vercel.app`.
 Set `VITE_API_BASE_URL=https://ecoguard-api.vercel.app/api/v1` in the Vercel
-project for production. The workspace signs in against the live API and
+project for production, and set `VITE_MAPTILER_KEY` to your MapTiler key — the
+build fails without it. The workspace signs in against the live API and
 subscribes to `/api/v1/stream` (SSE) for realtime updates.
 
 Note that Vercel has no SpeciesNet runtime, so production reports
 `image_assistance: "degraded"` and the app hides the suggestion flow. That is
 expected. Set `IMAGE_ASSISTANCE=disabled` on the Vercel API project to make
 that explicit.
+
+## Live maps (step 5: basemaps, viewport fetching, realtime)
+
+Every map screen renders through the same `MapPanel` / `AreaPolygonMap`
+(`src/components/MapPanel.tsx`). Basemap configuration comes from the
+environment — keys are never hardcoded:
+
+| Variable | Meaning |
+| --- | --- |
+| `VITE_MAP_TILE_PROVIDER` | `maptiler` (default). `osm` is development-only. |
+| `VITE_MAPTILER_KEY` | MapTiler API key. **Required for any production build.** |
+| `VITE_MAPTILER_STYLE` | Raster style id, default `streets-v2`. |
+
+Copy `.env.example` → `.env` and put your real key there (`.env` is
+gitignored). Without a key:
+
+- `npm run dev` still works — maps fall back to the public OSM raster and show
+  a **development-only tile source** warning banner on the map.
+- `npm run build` **fails** with a clear message: the OSM fallback must never
+  ship to production, and `VITE_MAPTILER_KEY` is missing or invalid. The
+  runtime `getTileProfile()` error is only a second line of defence.
+
+Tile-load failures show a distinct **"Map tiles failed to load"** banner; the
+boundary overlays and markers still render because they come from the EcoGuard
+API, not from the tile server.
+
+Maps fetch from `GET /api/v1/map` with the live `bbox` + `zoom` (debounced
+~350 ms client-side, cached per viewport in an LRU of 24). Low zoom levels
+return server-side clusters; higher levels return individual points plus the
+assigned-area polygon overlays from `areas_osm`. Responses are cached server
+side keyed by `view + category + zoom + bbox` (per user for staff).
+
+**Realtime.** The authenticated `/stream` (SSE) subscription lives once in
+`AppShell` and is open only for signed-in users (closed on logout). Staff map
+screens evict their cached viewport scopes and re-fetch only the visible bbox
+on `reports.` / `advisory.` / `areas.` events. The **public community map does
+not subscribe anonymously** — the stream is session-only and its metadata would
+leak internal ids and activity timing, so it polls every 20 s (the server cache
+keeps that cheap).
 
 ## Area management (OSM geographic areas)
 
