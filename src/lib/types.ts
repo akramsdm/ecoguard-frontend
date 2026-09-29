@@ -26,4 +26,14 @@ export interface GeoCluster {id:string;type:'Feature';geometry:{type:'Point';coo
 export interface MapAreaGeo {id:number;name:string;area_type:string;assigned:boolean;geometry:{type:string;coordinates:unknown}|null}
 export interface GeoDebug {source?:string;clustered?:boolean;cache_key?:string}
 export interface GeoData {type:'FeatureCollection';features:GeoFeature[];clusters?:GeoCluster[];areas?:MapAreaGeo[];debug?:GeoDebug;location_policy:string}
+/** One public case from /public/nearby (a report behind an active published advisory). */
+export interface NearbyCaseProperties {id:string;kind:'case';category:Category;state:string;distance_km:number;area_name:string;observed_at:string;published_at:string;location_precision:string}
+export interface NearbyCaseFeature {id:string;type:'Feature';geometry:{type:'Point';coordinates:[number,number]};properties:NearbyCaseProperties}
+export interface NearbyResponse {type:'FeatureCollection';features:NearbyCaseFeature[];clusters:[];areas:MapAreaGeo[];location_policy:string;attribution:string;debug:GeoDebug}
+/** One hit from /public/places (an OSM area or a gazetteer entry). */
+export interface PlaceResult {id:string;name:string;kind:'area'|'place';area_type:string|null;lat:number;lon:number}
+/** The server-coarsened opt-in saved location (/public/preferred-location). */
+export interface SavedLocation {client_id:string;latitude:number;longitude:number;name:string|null;precision:string}
+export type NearbySource='idle'|'locating'|'ok'|'denied'|'unsupported'|'error';
+export type NearbyMethod='gps'|'manual'|'place'|'saved'|null;
 export interface Draft {owner:string; client_id:string; category:Category;title:string;description:string;species:string;area_id:string;observed_at:string;latitude:string;longitude:string;share_location:boolean;consent:boolean;image?:Blob; image_name?:string;evidence?:Evidence; prediction?:Prediction;server_id?:string;server_version?:number;submitted?:boolean}

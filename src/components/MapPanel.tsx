@@ -10,6 +10,12 @@ import 'leaflet/dist/leaflet.css';
 // through MapPanel / AreaPolygonMap, so every screen gets the same tile profile,
 // attributions and failure handling. All geometry handling stays client-side:
 // nothing but the tile URL (with the provider key) ever touches the tile host.
+//
+// Step 6 additions (public near-me map): the panel can render ONE user-location
+// marker (locationMarker), act as a point picker (pickMode/onPick for tap or
+// marker drag), start from country bounds (initialBounds) and recentre
+// programmatically (center). A synthetic moveend fires once after ready so
+// viewport-driven maps (CommunityMap) fetch their first view without a gesture.
 
 const CAT_COLORS: Record<string, string> = {
   wildlife: '#a85615',
@@ -64,6 +70,15 @@ interface MapPanelProps {
   /** Automatically fit to the data. False for viewport-driven maps (the viewer navigates). */
   fit?: boolean;
   height?: number | string;
+  /** The user's active location marker (public near-me map). */
+  locationMarker?: {lat: number; lon: number} | null;
+  /** When true the map taps/drags the location marker and reports via onPick. */
+  pickMode?: boolean;
+  onPick?: (lat: number, lon: number) => void;
+  /** Fit the map to these bounds once on first render (e.g. Uganda country bounds). */
+  initialBounds?: [[number, number], [number, number]] | null;
+  /** Programmatic recentre (place-search hit / saved location auto-load). */
+  center?: {lat: number; lon: number; zoom?: number} | null;
 }
 
 export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -71,6 +86,11 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
   const rootRef = useRef<any>(null);
   const LRef = useRef<any>(null);
   const onViewportRef = useRef<((v: MapViewport) => void) | null>(null);
+  const locationMarkerRef = useRef<any>(null);
+  const pickCallbackRef = useRef<((lat: number, lon: number) => void) | null>(null);
+  const clickHandlerRef = useRef<((e: any) => void) | null>(null);
+  const dragHandlerRef = useRef<(() => void) | null>(null);
+  const fitDoneRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [tileError, setTileError] = useState(false);
   const [configError, setConfigError] = useState('');
@@ -128,7 +148,13 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
           });
         });
         setReady(true);
-        setTimeout(() => map.invalidateSize(), 60);
+        setTimeout(() => {
+          if (!active) return;
+          map.invalidateSize();
+          // Single synthetic moveend so viewport-driven maps fetch their first
+          // view without requiring a user gesture (CommunityMap first-load fix).
+          map.fire('moveend');
+        }, 60);
       })
       .catch(() => {
         if (active && !configError) setConfigError('Spatial rendering library could not load.');
@@ -140,12 +166,99 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
     return () => {
       active = false;
       ro.disconnect();
+      clickHandlerRef.current && mapRef.current?.off('click', clickHandlerRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
       rootRef.current = null;
+      locationMarkerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef]);
+
+  // Renders/moves/removes the single user-location marker. In pick mode the
+  // marker is draggable and the map click sets it, otherwise it is passive.
+  const setLocationMarker = useCallback((pt: {lat: number; lon: number} | null) => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L) return;
+    if (!pt) {
+      if (locationMarkerRef.current) {
+        map.removeLayer(locationMarkerRef.current);
+        locationMarkerRef.current = null;
+      }
+      return;
+    }
+    const icon = L.divIcon({
+      className: 'map-you-wrap',
+      html: '<span class="map-you"></span>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    if (locationMarkerRef.current) {
+      locationMarkerRef.current.setLatLng([pt.lat, pt.lon]).setIcon(icon);
+    } else {
+      const marker = L.marker([pt.lat, pt.lon], {icon, keyboard: false});
+      locationMarkerRef.current = marker;
+      // Add to the map (not the render layerGroup) so polling re-renders of
+      // cases/boundaries (root.clearLayers) never wipe the user's marker.
+      map.addLayer(marker);
+    }
+  }, []);
+
+  const setPickMode = useCallback((on: boolean, onPick?: (lat: number, lon: number) => void) => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L) return;
+    pickCallbackRef.current = onPick || null;
+    // Map click picks a point.
+    if (clickHandlerRef.current) {
+      map.off('click', clickHandlerRef.current);
+      clickHandlerRef.current = null;
+    }
+    if (on) {
+      const handler = (e: any) => {
+        const p = e.latlng;
+        setLocationMarker({lat: p.lat, lon: p.lon});
+        pickCallbackRef.current?.(p.lat, p.lon);
+      };
+      clickHandlerRef.current = handler;
+      map.on('click', handler);
+    }
+    // The marker itself is draggable while picking.
+    const marker = locationMarkerRef.current;
+    if (dragHandlerRef.current && marker) marker.off('dragend', dragHandlerRef.current);
+    dragHandlerRef.current = null;
+    if (on && marker) {
+      marker.dragging?.enable();
+      const onDrag = () => {
+        const p = marker.getLatLng();
+        pickCallbackRef.current?.(p.lat, p.lng);
+      };
+      dragHandlerRef.current = onDrag;
+      marker.on('dragend', onDrag);
+    } else if (marker) {
+      marker.dragging?.disable();
+    }
+  }, [setLocationMarker]);
+
+  /** Fit once to the given bounds (public map default: Uganda country bounds). */
+  const fitInitial = useCallback((bounds: [[number, number], [number, number]]) => {
+    if (fitDoneRef.current) return;
+    fitDoneRef.current = true;
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      map.fitBounds(bounds, {padding: [10, 10], maxZoom: 9});
+    } catch {
+      // Invalid bounds: keep the default view.
+    }
+  }, []);
+
+  const centerOn = useCallback((lat: number, lon: number, zoom?: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setView([lat, lon], zoom ?? map.getZoom());
+  }, []);
 
   const renderGeo = useCallback((data: GeoData, fit: boolean, onSelect?: (f: GeoFeature) => void) => {
     const map = mapRef.current;
@@ -223,16 +336,41 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
     }
   }, []);
 
-  return {ready, tileError, configError, devFallback, count, renderGeo, setOnViewport, setCount};
+  return {
+    ready, tileError, configError, devFallback, count, renderGeo, setOnViewport,
+    setCount, setLocationMarker, setPickMode, fitInitial, centerOn,
+  };
 }
 
-export function MapPanel({data, onSelect, onViewportChange, large = false, fit = true, height}: MapPanelProps) {
+export function MapPanel({data, onSelect, onViewportChange, large = false, fit = true, height,
+  locationMarker = null, pickMode = false, onPick, initialBounds = null, center = null}: MapPanelProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const {ready, tileError, configError, devFallback, count, renderGeo, setOnViewport} = useMapPanel(ref);
+  const {ready, tileError, configError, devFallback, count, renderGeo, setOnViewport,
+    setLocationMarker, setPickMode, fitInitial, centerOn} = useMapPanel(ref);
 
   useEffect(() => {
     setOnViewport(onViewportChange || null);
   }, [onViewportChange, setOnViewport]);
+
+  useEffect(() => {
+    if (!ready) return;
+    setLocationMarker(locationMarker);
+  }, [locationMarker, ready, setLocationMarker]);
+
+  useEffect(() => {
+    if (!ready) return;
+    setPickMode(pickMode, onPick || undefined);
+  }, [pickMode, onPick, ready, setPickMode]);
+
+  useEffect(() => {
+    if (!ready || !initialBounds) return;
+    fitInitial(initialBounds);
+  }, [initialBounds, ready, fitInitial]);
+
+  useEffect(() => {
+    if (!ready || !center) return;
+    centerOn(center.lat, center.lon, center.zoom);
+  }, [center, ready, centerOn]);
 
   const prevData = useRef<GeoData | null>(null);
   useEffect(() => {
@@ -245,7 +383,7 @@ export function MapPanel({data, onSelect, onViewportChange, large = false, fit =
   }, [data, ready, fit, onSelect, renderGeo]);
 
   return (
-    <div className={'map-panel ' + (large ? 'large' : '')}>
+    <div className={'map-panel ' + (large ? 'large' : '') + (pickMode ? ' picking' : '')}>
       <div ref={ref} className="leaflet-container-host" style={height ? {height} : undefined} />
       {!ready && !configError && <span className="map-loading">Preparing map…</span>}
       <MapStatus devFallback={devFallback} tileError={tileError} configError={configError} count={count} />

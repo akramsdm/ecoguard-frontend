@@ -8,6 +8,7 @@ import {loadDraft,removeDraft,saveDraft,newDraft} from './lib/drafts';
 import type {Area,Category,Config,Draft,User} from './lib/types';
 import {Button,Icon,Brand,Empty} from './components/ui';
 import {Welcome,SignIn,Home,Upload,Identify,ReportForm,ReviewSubmit,Success,Alerts,AlertDetail,MyReports,Progress,CommunityMap,Messages,Profile,Help} from './pages/Community';
+import {Nearby} from './pages/Nearby';
 import {DashboardPage,ReportWorkspace,Verification,MapWorkspace,AlertCentre,Analytics,TeamSettings} from './pages/Workspace';
 import {StaffLogin} from './pages/Staff';
 import {AdminPage} from './pages/Admin';
@@ -19,7 +20,7 @@ import './app.css';
 
 type Mode='community'|'workspace';
 type Route={mode:Mode;page:string;id:string;tab:string;staffGate:boolean};
-const PUBLIC_PAGES=['welcome','signin','help'];
+const PUBLIC_PAGES=['welcome','signin','help','nearby'];
 
 /** #/staff/login is its own entry point, not a flag on the community login. */
 function readRoute():Route{
@@ -31,7 +32,7 @@ function readRoute():Route{
   return {mode:head==='workspace'?'workspace':'community',page:page||'home',id,tab,staffGate:false};
 }
 
-const COMMUNITY_NAV=[['home','home','Home'],['map','map','Map'],['myreports','file','My reports'],['alerts','bell','Advisories'],['profile','user','Profile']] as const;
+const COMMUNITY_NAV=[['home','home','Home'],['map','map','Map'],['nearby','map','Near me'],['myreports','file','My reports'],['alerts','bell','Advisories'],['profile','user','Profile']] as const;
 const WORKSPACE_NAV=[['dashboard','grid','Overview'],['reports','file','Reports'],['wildlife','paw','Wildlife'],['wetland','leaf','Wetlands'],['verify','check','Verification'],['map','map','Incident map'],['alerts','bell','Alert centre'],['analytics','chart','Analytics'],['team','settings','Team & settings']] as const;
 
 export function AppShell(){
@@ -151,6 +152,7 @@ function communityPage(page:string){
     case 'alerts':return <Alerts/>;
     case 'alertdetail':return <AlertDetail/>;
     case 'map':return <CommunityMap/>;
+    case 'nearby':return <Nearby/>;
     case 'community':return <Messages/>;
     case 'profile':return <Profile/>;
     case 'stakeholders':return <Stakeholders/>;

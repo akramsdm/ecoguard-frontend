@@ -133,6 +133,35 @@ not subscribe anonymously** — the stream is session-only and its metadata woul
 leak internal ids and activity timing, so it polls every 20 s (the server cache
 keeps that cheap).
 
+## Public near-me map (step 6: anonymous GPS/manual/place-search surface)
+
+`/nearby` is a fully anonymous page (`PUBLIC_PAGES` includes `'nearby'`, so it
+needs no sign-in route in `AppShell`). It polls the same 20 s cadence as the
+community map (`src/lib/useNearby.ts`, `NEARBY_POLL_MS`):
+
+- **Location is never automatic.** The map opens at Uganda country bounds and
+  asks for nothing. A location comes from exactly three explicit actions: the
+  **Use my location** button (`navigator.geolocation`, with distinct
+  denied/unsupported/error states and **no silent retry**), **tapping/dragging
+  the pin on the map** (pick mode), or a **place search** hit against the
+  backend gazetteer (`/public/places` — OSM areas + local `places` table, no
+  external geocoder). There is one active location, clearable at any time.
+- **Fetch.** `/api/v1/public/nearby?lat&lon&radius_km&category` runs
+  `ST_DWithin` on the generalised `public_geom`. Radius default 10 km, cap
+  50 km, ≤ 200 rows, per-IP rate limits (60/min). Polling refetches every
+  20 s while a location is active and the tab is visible; the server cache on
+  the ~1 km query grid makes that cheap (`debug.source` honesty preserved).
+- **Privacy by design.** Cases carry exactly `category, state, distance_km,
+  area_name, observed_at, published_at, location_precision` — the map panel
+  Title slot is filled with the category label client-side. The exact GPS fix
+  lives only in React state for the session. The only persisted value is an
+  **opt-in saved location** (`/public/preferred-location`) keyed by an anonymous
+  `localStorage` client id, and the server stores only the ~1 km coarsened
+  point; the UI explains this and offers Remove.
+- The district boundary overlay comes from the already-anonymous
+  `/areas-osm?area_type=district&include_geometry=true` surface, fetched once
+  per page view (not per poll).
+
 ## Area management (OSM geographic areas)
 
 Staff areas come from the OSM import (`areas_osm`), not from hand-drawn
