@@ -92,3 +92,33 @@ Note that Vercel has no SpeciesNet runtime, so production reports
 `image_assistance: "degraded"` and the app hides the suggestion flow. That is
 expected. Set `IMAGE_ASSISTANCE=disabled` on the Vercel API project to make
 that explicit.
+
+## Area management (OSM geographic areas)
+
+Staff areas come from the OSM import (`areas_osm`), not from hand-drawn
+circles, and every area-scoped UI reads the assignments the API returns.
+
+- **Team & settings → team.** Each account's row shows its assigned OSM areas
+  as badges. The create/edit form's **"Assigned OSM areas"** picker searches
+  and multi-selects real areas (district, park, reserve …) by name/alias and
+  saves their numeric ids. This replaced the legacy "assigned communities"
+  checkboxes, which sent legacy keys that the PostGIS backend now rejects with
+  422. The picker only offers areas that are `active` for assignment; the API
+  refuses to save areas an administrator has deactivated.
+- **Team & settings → areas.** The former "community centroids" management
+  (legacy `/admin/areas` circles) was replaced by an **OSM area catalogue**:
+  search + type filter + pagination, an `Active`/`Inactive` gate with an
+  admin-only toggle (audited, non-destructive), and a **coverage** pane showing
+  per-area open/total case counts and assigned-staff counts (areas needing
+  staff flagged). Clicking an area name loads its detail with a polygon preview
+  (`AreaPolygonMap`, from `GET /areas-osm/{id}`).
+- **Overview.** Staff accounts see **"Your assigned areas"** with live open-case
+  counts, served by `GET /my-areas`.
+- **Admin page.** The "Area coverage" tile and card now use
+  `GET /admin/areas-osm/coverage` (OSM areas with staff / open-case load)
+  instead of the legacy circle list.
+- **Out-of-area staff.** Redacted reports render as "Restricted case" rows in
+  every list, the verification page shows a limited-facts read card instead of
+  crashing on the withheld fields, the incident map lists them as "Restricted
+  case", and the assign dropdown no longer filters by the report's (legacy)
+  area key — the API validates overlap and answers 422/403.

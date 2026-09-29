@@ -1,4 +1,4 @@
-import type { User } from './types';
+import type {User, OsmArea, OsmAreaDetail, AreaCoverage, MyArea} from './types';
 let csrf='';
 const BASE=(import.meta.env.VITE_API_BASE_URL||'/api/v1').replace(/\/$/,'');
 export class ApiError extends Error{constructor(message:string,public status:number){super(message);this.name='ApiError'}}
@@ -7,3 +7,16 @@ export async function api<T>(path:string,init:RequestInit={}):Promise<T>{const m
 export const post=<T,>(path:string,body:unknown)=>api<T>(path,{method:'POST',body:JSON.stringify(body)});
 export async function signIn(email:string,password:string,name?:string){const result=await post<{user:User;csrf_token:string}>(name?'/auth/register':'/auth/login',name?{email,password,name}:{email,password});setCsrf(result.csrf_token);return result.user}
 export async function downloadExport(){const r=await fetch(BASE+'/reports/export.csv',{credentials:'include'});if(!r.ok)throw new ApiError('Export unavailable.',r.status);const b=await r.blob();const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='ecoguard-reports.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),3000)}
+/** Browse OSM-backed geographic areas with optional search/filter/pagination. */
+export function areasOsm(params:Record<string,string|number|boolean|undefined>={}){
+  const query=new URLSearchParams();
+  Object.entries(params).forEach(([key,value])=>{
+    if(value!==undefined&&value!=='')query.set(key,String(value));
+  });
+  const qs=query.toString();
+  return api<{items:OsmArea[];total:number;limit:number;offset:number;attribution:string}>(`/areas-osm${qs?'?'+qs:''}`);
+}
+export const osmArea=(id:number)=>api<OsmAreaDetail>(`/areas-osm/${id}`);
+export const setAreaActive=(id:number,active:boolean)=>api<{id:number;active:boolean}>(`/admin/areas-osm/${id}`,{method:'PATCH',body:JSON.stringify({active})});
+export const areaCoverage=()=>api<AreaCoverage>('/admin/areas-osm/coverage');
+export const myAreas=()=>api<{items:MyArea[]}>('/my-areas');

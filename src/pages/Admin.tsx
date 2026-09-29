@@ -10,6 +10,7 @@ import {useApp} from '../lib/context';
 import {useData} from '../lib/useData';
 import {Button,Card,Notice,Empty,Loading,ErrorBox,PageHead,Icon,Badge,State,nice} from '../components/ui';
 import {canRenderWorkspacePage} from '../lib/auth';
+import type {AreaCoverage} from '../lib/types';
 
 type Attention={severity:'high'|'medium'|'low'|'ok';message:string};
 type AdminDashboard={
@@ -35,6 +36,7 @@ export function AdminPage(){
   // for exactly this reason: the hook is still called, so the render stays hook-stable
   // when an administrator's roles change underneath the open page.
   const d=useData<AdminDashboard>(allowed?'/admin/dashboard':null,20000);
+  const cov=useData<AreaCoverage>(allowed?'/admin/areas-osm/coverage':null,20000);
 
   if(!allowed)return <Empty title="Administrator access required" action={
     <Button onClick={()=>nav('dashboard','workspace')}>Back to overview</Button>}>This page is limited to accounts holding the administrator role.</Empty>;
@@ -46,10 +48,12 @@ export function AdminPage(){
   const tiles:readonly {label:string;value:string;sub:string;icon:string;go:()=>void}[]=[
     {label:'Accounts',value:String(data.users.total),sub:`${data.users.active} active`,icon:'user',go:tabLink('team','team')},
     {label:'Administrators',value:String(data.users.admins),sub:'can grant access',icon:'lock',go:tabLink('team','team')},
-    {label:'Areas covered',value:`${data.areas.with_staff}/${data.areas.total}`,sub:'have active staff',icon:'map',go:tabLink('team','areas')},
+    {label:'Areas covered',value:cov.data?`${cov.data.items.filter(i=>i.active&&i.assigned_staff>0).length}/${cov.data.items.filter(i=>i.active).length}`:'-',sub:'active OSM areas with staff',icon:'map',go:tabLink('team','areas')},
     {label:'Failed jobs',value:String(data.jobs.by_state.failed||0),sub:'will not retry',icon:'bell',go:tabLink('team','jobs')},
   ];
-  const coverage=data.areas.without_staff.length/data.areas.total;
+  const activeAreas=cov.data?.items.filter(i=>i.active)||[];
+  const staffedAreas=activeAreas.filter(i=>i.assigned_staff>0)||[];
+  const covRows=cov.data?.items.filter(i=>i.needs_staff||i.open_cases>0).slice(0,8)||[];
 
   return <>
     <PageHead label="ADMINISTRATION" title="Is this deployment ready to use?"
@@ -86,16 +90,16 @@ export function AdminPage(){
 
       <Card>
         <h3>Area coverage</h3>
-        {data.areas.total===0
-          ?<Empty title="No community area exists">Reports cannot be filed until an area is created.</Empty>
-          :data.areas.without_staff.length===0
-            ?<p>Every area has at least one active staff account.</p>
-            :data.areas.without_staff.map(a=>
-              <div className="row" key={a.id}><Icon name="map" size={17}/><span className="grow">{a.name}</span>
-                <Badge tone="amber">no staff</Badge></div>)}
-        {data.areas.total>0&&coverage<1&&
-          <small>Reports in an area with no assigned staff cannot be reviewed by anyone.</small>}
-        <Button variant="ghost small" onClick={tabLink('team','areas')}>Manage areas</Button>
+        {cov.error?<ErrorBox message={cov.error} retry={cov.reload}/>:cov.data?<>
+          <p>{staffedAreas.length} of {activeAreas.length} active OSM areas have assigned staff.</p>
+          {covRows.length===0
+            ?<p>Every area with open cases has staff assigned.</p>
+            :covRows.map(a=>
+              <div className="row" key={a.id}><Icon name="map" size={17}/><span className="grow">{a.name}<small>{a.area_type} - {a.open_cases} open / {a.total_cases} total</small></span>
+                <Badge tone={a.needs_staff?'amber':'green'}>{a.needs_staff?'no staff':'covered'}</Badge></div>)}
+          <small>Open = submitted, under review or needs evidence. Areas are OSM-geographic (district, park, reserve).</small>
+          <Button variant="ghost small" onClick={tabLink('team','areas')}>Open area catalogue</Button>
+        </>:<Loading/>}
       </Card>
 
       <Card>

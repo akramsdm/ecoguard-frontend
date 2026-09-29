@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Button,Icon,Badge,Empty} from './ui';
+import {Button,Icon,Badge,Empty,Notice} from './ui';
 import type {GeoData,GeoFeature} from '../lib/types';
 import 'leaflet/dist/leaflet.css';
 export function MapPanel({data,onSelect,large=false}:{data:GeoData;onSelect:(feature:GeoFeature)=>void;large?:boolean}){
@@ -16,7 +16,7 @@ export function MapPanel({data,onSelect,large=false}:{data:GeoData;onSelect:(fea
     const p=f.geometry.coordinates;
     const color=f.properties.category==='wildlife'?'#a85615':f.properties.category==='flood'?'#286581':'#1c694c';
     const marker=L.circleMarker([p[1],p[0]],{radius:10,color:'#fff',weight:3,fillColor:color,fillOpacity:1}).addTo(map);
-    const el=document.createElement('span');el.textContent=f.properties.title;
+    const el=document.createElement('span');el.textContent=f.properties.title||'Restricted case';
     marker.bindTooltip(el);marker.on('click',()=>onSelect(f));
    });
    if(data.features.length){map.fitBounds(data.features.map(f=>[f.geometry.coordinates[1],f.geometry.coordinates[0]] as [number,number]),{padding:[45,45],maxZoom:10});}
@@ -32,4 +32,19 @@ export function MapPanel({data,onSelect,large=false}:{data:GeoData;onSelect:(fea
  <div className="map-top"><Badge>{data.features.length} mapped records</Badge></div>
  <div className="map-caption">{offline?'Offline spatial view • no basemap':import.meta.env.VITE_MAP_TILES==='osm'?'Map data: OpenStreetMap contributors':'Spatial view • enable a basemap in configuration'} • Community markers show area centres, not animal positions.</div>
  </div>;
+}
+
+export function AreaPolygonMap({geojson,height=240}:{geojson:any;height?:number}){
+ const ref=useRef<HTMLDivElement>(null),mapRef=useRef<any>(null);const [offline,setOffline]=useState(false);
+ useEffect(()=>{let active=true;setOffline(false);
+  import('leaflet').then(module=>{
+   if(!active||!ref.current)return;const L=module.default||module;
+   const map=L.map(ref.current,{attributionControl:true,scrollWheelZoom:false,zoomControl:false}).setView([.3,31.1],7);mapRef.current=map;
+   const layer=L.geoJSON(geojson,{style:{color:'#1c694c',weight:2,fillColor:'#1c694c',fillOpacity:.18}}).addTo(map);
+   const bounds=layer.getBounds();if(bounds.isValid())map.fitBounds(bounds,{padding:[16,16],maxZoom:11});
+   setTimeout(()=>map.invalidateSize(),60);
+  }).catch(()=>{if(active)setOffline(true);});
+  return()=>{active=false;mapRef.current?.remove();mapRef.current=null;};
+ },[JSON.stringify(geojson)]);
+ return <div className="stack"><div ref={ref} style={{height}} className="leaflet-container-host" />{offline&&<Notice>The spatial library could not load; the polygon is not previewable here.</Notice>}</div>;
 }
