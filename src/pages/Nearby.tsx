@@ -1,14 +1,10 @@
 import React,{useEffect,useState} from 'react';
 import {useApp} from '../lib/context';
 import {useNearby} from '../lib/useNearby';
-import {fetchDistricts, MAX_RADIUS_KM, RADII_KM} from '../lib/nearby';
+import {fetchDistricts, MAX_RADIUS_KM, RADII_KM, UGANDA_BOUNDS} from '../lib/nearby';
 import {MapPanel} from '../components/MapPanel';
 import {Button,Card,Notice,Loading,ErrorBox,PageHead,Icon,Badge,Empty,date,nice,categoryIcon} from '../components/ui';
 import type {GeoData,MapAreaGeo,NearbyCaseFeature} from '../lib/types';
-
-// Uganda country bounds: the public map starts here (no location permission is
-// ever requested automatically — only the explicit GPS / pick / search actions).
-const UGANDA_BOUNDS: [[number, number], [number, number]] = [[-1.7, 28.8], [4.3, 35.1]];
 
 export function Nearby() {
   const {nav, notify, user} = useApp();

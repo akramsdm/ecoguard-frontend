@@ -10,6 +10,12 @@ export const DEFAULT_RADIUS_KM = 10;
 export const RADII_KM = [5, 10, 25, 50] as const;
 export const CATEGORY_PATTERN = /^(wildlife|wetland|flood)$/;
 
+// Uganda country bounds: the public map starts here (no location permission is
+// ever requested automatically — only explicit GPS / pick / search actions).
+// Shared by the public near-me page and the public landing map so both open on
+// exactly the same country view.
+export const UGANDA_BOUNDS: [[number, number], [number, number]] = [[-1.7, 28.8], [4.3, 35.1]];
+
 /** Pure query-string builder for /public/nearby (unit-tested). */
 export function nearbyQuery(
   lat: number,

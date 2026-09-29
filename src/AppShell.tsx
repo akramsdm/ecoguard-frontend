@@ -13,6 +13,8 @@ import {DashboardPage,ReportWorkspace,Verification,MapWorkspace,AlertCentre,Anal
 import {StaffLogin} from './pages/Staff';
 import {AdminPage} from './pages/Admin';
 import {canRenderWorkspace, canRenderWorkspacePage, isStaffUser, withAdminNav, STAFF_LANDING} from './lib/auth';
+import {takeReportIntent, draftForIntent, authenticatedHome} from './lib/landing';
+import {PublicLanding} from './pages/Landing';
 import {Stakeholders} from './pages/Stakeholders';
 import {Screens} from './pages/Screens';
 import './styles.css';
@@ -20,7 +22,11 @@ import './app.css';
 
 type Mode='community'|'workspace';
 type Route={mode:Mode;page:string;id:string;tab:string;staffGate:boolean};
-const PUBLIC_PAGES=['welcome','signin','help','nearby'];
+/**
+ * Pages reachable with no account. 'home' is the public landing (the live map);
+ * the rest keep their existing sign-in-gated behaviour.
+ */
+const PUBLIC_PAGES=['home','welcome','signin','help','nearby'];
 
 /** #/staff/login is its own entry point, not a flag on the community login. */
 function readRoute():Route{
@@ -38,6 +44,7 @@ const WORKSPACE_NAV=[['dashboard','grid','Overview'],['reports','file','Reports'
 export function AppShell(){
   const[route,setRoute]=useState<Route>(readRoute);
   const[user,setUser]=useState<User|null>(null);
+  const[booted,setBooted]=useState(false);
   const[areas,setAreas]=useState<Area[]>([]);
   const[config,setConfig]=useState<Config|null>(null);
   const[draft,setDraft]=useState<Draft|null>(null);
@@ -56,11 +63,18 @@ export function AppShell(){
   },!!user);
 
   useEffect(()=>{const on=()=>setRoute(readRoute());addEventListener('hashchange',on);
-    if(!location.hash)location.hash='#/community/home';
+    // Root routing: with no hash, wait for /auth/me before choosing a target so
+    // a signed-in reporter is never flashed the public landing first. Anonymous
+    // visitors go straight to the landing ('#/' and '' both parse to 'home').
+    let cancelled=false;
+    const resolveRoot=()=>{if(!location.hash&&!cancelled)location.hash='#/community/home';};
+    if(location.hash)resolveRoot();
     api<{user:User;csrf_token:string}>('/auth/me').then(x=>{setUser(x.user);setCsrf(x.csrf_token);
-      return loadDraft(x.user.id).then(d=>{if(d)setDraft(d)}).catch(()=>{});}).catch(()=>{});
+      return loadDraft(x.user.id).then(d=>{if(d)setDraft(d)}).catch(()=>{});})
+      .catch(()=>{})
+      .finally(()=>{if(!cancelled){resolveRoot();setBooted(true);}});
     api<Config>('/config').then(setConfig).catch(()=>{});
-    return()=>removeEventListener('hashchange',on);},[]);
+    return()=>{cancelled=true;removeEventListener('hashchange',on);};},[]);
 
   // The community list is cached server-side, so it is refetched whenever a change is
   // reported: a newly created area would otherwise stay invisible until a full reload.
@@ -73,7 +87,18 @@ export function AppShell(){
   useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),3800);return()=>clearTimeout(id);},[toast]);
 
   const staff=isStaffUser(user);
-  useEffect(()=>{if(user&&['welcome','signin'].includes(route.page))location.hash=staff?STAFF_LANDING:`#/community/home`;},[user,route.page,staff]);
+  // Post-auth routing. A parked "Report" intent (from the public landing) wins:
+  // seed the draft — carrying the landing location when set — and go straight to
+  // the existing report entry point. Otherwise returning from the sign-in page
+  // lands on the account's home. Reads the live hash (not route.page) so React's
+  // double-invoked effects cannot undo the first navigation.
+  useEffect(()=>{
+    if(!user)return;
+    const pending=takeReportIntent();
+    if(pending){const d=draftForIntent(user,pending);setDraft(d);saveDraft(d).catch(()=>{});location.hash='#/community/upload';return;}
+    const h=location.hash;
+    if(h.startsWith('#/community/welcome')||h.startsWith('#/community/signin'))location.hash=authenticatedHome(user);
+  },[user,route.page]);
 
   // Client-side staff guard. Only navigation was gated before, so a non-staff user who
   // typed a #/workspace/* URL (or followed a stale link) was served the admin shell with
@@ -103,9 +128,15 @@ export function AppShell(){
   // Admin pages are gated one level further than the rest of the workspace.
   const workspaceBlocked=route.mode==='workspace'&&!!user&&!canRenderWorkspacePage(user,route.page);
 
-  const body=!open?<SignIn/>
+  const isLanding=route.mode==='community'&&route.page==='home';
+  // The landing slot holds two audiences: signed-in reporters get their Home,
+  // everyone else the public landing. Until /auth/me has answered there is no
+  // safe choice, so a neutral placeholder blocks the landing→home flash.
+  const body=!booted&&isLanding?<div className="landing-boot"><span className="spinner"/>Preparing the map…</div>
+    :!open?<SignIn/>
     :staffGate?<StaffLogin/>
     :workspaceBlocked?<Empty title="Staff workspace" action={<Button onClick={()=>{location.hash='#/community/home'}}>Back to community home</Button>}/>
+    :isLanding&&!user?<PublicLanding/>
     :route.page==='welcome'?<Welcome/>
     :route.page==='signin'?<SignIn/>
     :route.page==='help'?<Help/>
