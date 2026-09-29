@@ -21,6 +21,9 @@ export interface Message {id:string;body:string;is_mine:boolean;sender_label:str
 export interface Config {demo_enabled:boolean;image_assistance:'ready'|'degraded'|'not_configured';sms:string;max_upload_mb:number;languages:string[]}
 export interface Dashboard {counts:Record<string,number>;states:Record<string,number>;categories:Record<string,number>;activity:{date:string;count:number}[];recent:CaseReport[];scope:string;note:string;ai_metrics:null}
 export interface Collection<T> {items:T[];total?:number;page?:number;page_size?:number}
-export interface GeoFeature {id:string;type:'Feature';geometry:{type:'Point';coordinates:[number,number]};properties:{id:string;title:string;category:Category;state:string;area_name:string;precision:string;kind:string}}
-export interface GeoData {type:'FeatureCollection';features:GeoFeature[];location_policy:string}
+export interface GeoFeature {id:string;type:'Feature';geometry:{type:'Point';coordinates:[number,number]};properties:{id:string;title:string;category:Category;state:string;area_name:string;precision:string;kind:string;redacted?:boolean;code?:string}}
+export interface GeoCluster {id:string;type:'Feature';geometry:{type:'Point';coordinates:[number,number]};properties:{id:string;kind:'cluster';count:number;category:Category;categories:Record<string,number>;precision:string}}
+export interface MapAreaGeo {id:number;name:string;area_type:string;assigned:boolean;geometry:{type:string;coordinates:unknown}|null}
+export interface GeoDebug {source?:string;clustered?:boolean;cache_key?:string}
+export interface GeoData {type:'FeatureCollection';features:GeoFeature[];clusters?:GeoCluster[];areas?:MapAreaGeo[];debug?:GeoDebug;location_policy:string}
 export interface Draft {owner:string; client_id:string; category:Category;title:string;description:string;species:string;area_id:string;observed_at:string;latitude:string;longitude:string;share_location:boolean;consent:boolean;image?:Blob; image_name?:string;evidence?:Evidence; prediction?:Prediction;server_id?:string;server_version?:number;submitted?:boolean}

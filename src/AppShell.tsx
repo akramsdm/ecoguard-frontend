@@ -1,6 +1,8 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {AppContext} from './lib/context';
 import type {AppContextType} from './lib/context';
+import {useRealtimeEvents} from './lib/useRealtime';
+import type {RealtimeEvent} from './lib/useRealtime';
 import {api,post,setCsrf} from './lib/api';
 import {loadDraft,removeDraft,saveDraft,newDraft} from './lib/drafts';
 import type {Area,Category,Config,Draft,User} from './lib/types';
@@ -40,6 +42,17 @@ export function AppShell(){
   const[draft,setDraft]=useState<Draft|null>(null);
   const[refresh,setRefresh]=useState(0);
   const[toast,setToast]=useState('');
+  const[realtimeTick,setRealtimeTick]=useState(0);
+  const[realtimeEvents,setRealtimeEvents]=useState<RealtimeEvent[]>([]);
+
+  // AppShell owns the realtime auth lifecycle: the single shared EventSource is
+  // opened only while a user session exists and closed on logout (the hook shuts
+  // the stream down when the last enabled listener disappears). Map screens scope
+  // their refetches off realtimeEvents/realtimeTick instead of owning the stream.
+  useRealtimeEvents((ev)=>{
+    setRealtimeEvents(prev=>[ev,...prev].slice(0,6));
+    setRealtimeTick(n=>n+1);
+  },!!user);
 
   useEffect(()=>{const on=()=>setRoute(readRoute());addEventListener('hashchange',on);
     if(!location.hash)location.hash='#/community/home';
@@ -77,7 +90,7 @@ export function AppShell(){
   const saveLocal=useCallback(async()=>{if(draft)await saveDraft(draft);},[draft]);
   const logout=useCallback(async()=>{const id=user?.id;try{await post('/auth/logout',{});}finally{setUser(null);setCsrf('');setDraft(null);if(id)await removeDraft(id).catch(()=>{});location.hash='#/community/welcome';}},[]);
 
-  const value=useMemo<AppContextType>(()=>({user,setUser,areas,config,draft,setDraft,saveLocal,startDraft,notify,nav,logout,mode:route.mode,page:route.page,id:route.id,tab:route.tab,refresh,changed}),[user,areas,config,draft,route,refresh,saveLocal,startDraft,notify,nav,logout]);
+  const value=useMemo<AppContextType>(()=>({user,setUser,areas,config,draft,setDraft,saveLocal,startDraft,notify,nav,logout,mode:route.mode,page:route.page,id:route.id,tab:route.tab,refresh,changed,realtimeTick,realtimeEvents}),[user,areas,config,draft,route,refresh,saveLocal,startDraft,notify,nav,logout,realtimeTick,realtimeEvents]);
   const staffGate=route.staffGate&&route.page==='login';
   // Someone already holding a staff session has no use for the staff form.
   useEffect(()=>{if(staffGate&&canRenderWorkspace(user))location.hash=STAFF_LANDING;},[staffGate,user]);
