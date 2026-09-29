@@ -8,7 +8,10 @@ import type {GeoData} from './types';
 // The map component reports its live viewport (bbox + zoom); this hook debounces
 // those updates (~350ms), in-flight requests are cancelled, and every response is
 // cached client-side keyed by the exact query, so panning back to a visited area
-// is instant (warm cache skips the round trip). Realtime events
+// is instant (warm cache skips the round trip). The opening request runs without
+// a bbox (whole-scope default): before the first payload there is no map on
+// screen to take a viewport from, so pages fetch once to mount MapPanel, whose
+// first moveend then scopes every later request. Realtime events
 // (reports./advisory./areas. updated) evict this view's cached scopes and refetch
 // ONLY the currently visible bbox — never other viewports, never a full reload.
 // Community/public maps pass realtime:false and keep a poll interval instead
@@ -124,9 +127,13 @@ export function useMapData(opts: MapDataOptions) {
     let active = true;
     const controller = new AbortController();
     const viewport = opts.viewport ? applied : null;
-    if (opts.viewport && !applied) {
-      // Viewport-driven maps wait for the map's first moveend; fetching a bbox
-      // nobody is looking at would be wasted work.
+    if (opts.viewport && !applied && data) {
+      // Viewport-driven maps refetch on the map's settled moveend. Between
+      // settles (or before the first one once initial content is on screen)
+      // keep serving current data — fetching a bbox nobody is looking at would
+      // be wasted work. On first paint there is no map yet (pages mount
+      // MapPanel only once data exists), so the code below fetches the default
+      // no-bbox scope once; the panel's own first moveend then scopes it.
       setLoading(false);
       return () => { active = false; controller.abort(); };
     }

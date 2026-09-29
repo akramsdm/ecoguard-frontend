@@ -124,11 +124,15 @@ describe('mapQuery / mapCacheKey / evictView (pure helpers)', () => {
 });
 
 describe('useMapData viewport fetching (steps 4/5)', () => {
-  it('waits for the first viewport, then debounces bursts into one bbox+zoom request', async () => {
+  it('bootstraps with a default no-bbox fetch on first paint, then debounces the first viewport into one bbox+zoom request (regression: map pages hung on Loading)', async () => {
     vi.useFakeTimers();
     mountApp({view: 'staff', viewport: true, realtime: false});
     await flush();
-    expect(fetchMock).not.toHaveBeenCalled();
+    // On first paint there is no map yet (pages mount MapPanel only once data
+    // exists), so a default scope is fetched immediately. The panel's first
+    // moveend then scopes subsequent requests to the visible bbox.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/map?view=staff');
 
     act(() => captured!.onViewport({bbox: '30,0,32,1', zoom: 8}));
     act(() => captured!.onViewport({bbox: '30,5,32,6', zoom: 8}));
@@ -136,8 +140,8 @@ describe('useMapData viewport fetching (steps 4/5)', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
     await flush();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const url = String(fetchMock.mock.calls[0][0]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const url = String(fetchMock.mock.calls[1][0]);
     expect(url).toContain('view=staff');
     expect(url).toContain('bbox=31,0,33,1');
     expect(url).toContain('zoom=9');
@@ -149,18 +153,18 @@ describe('useMapData viewport fetching (steps 4/5)', () => {
     act(() => captured!.onViewport({bbox: '30,0,32,1', zoom: 8}));
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // default bootstrap + first viewport
 
     act(() => captured!.onViewport({bbox: '30,2,32,4', zoom: 10}));
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     // Pan back to the first viewport: served from cache, no third request.
     act(() => captured!.onViewport({bbox: '30,0,32,1', zoom: 8}));
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('refetches only the current bbox on relevant realtime events, ignoring unrelated ones', async () => {
@@ -170,7 +174,7 @@ describe('useMapData viewport fetching (steps 4/5)', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
     await flush();
     const base = fetchMock.mock.calls.length;
-    expect(base).toBe(1);
+    expect(base).toBe(2); // default bootstrap + first viewport scope
 
     // reports.updated → evict this view, refetch ONLY the visible bbox.
     rerender({view: 'staff', viewport: true, realtime: true}, {
