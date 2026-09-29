@@ -33,7 +33,7 @@ function categoryColor(category: string) {
 
 /** Shared banner region: dev-fallback warning, tile-failure banner, record badge. */
 function MapStatus({devFallback, tileError, configError, count}: {
-  devFallback: boolean; tileError: boolean; configError: string; count: number;
+  devFallback: boolean; tileError: boolean; configError: string; count: number | null;
 }) {
   return (
     <div className="map-top">
@@ -53,7 +53,7 @@ function MapStatus({devFallback, tileError, configError, count}: {
           and boundary overlays still render, since they come from the EcoGuard API.
         </div>
       )}
-      <Badge>{count} mapped records</Badge>
+      {count !== null && <Badge>{count} mapped records</Badge>}
     </div>
   );
 }
@@ -79,6 +79,8 @@ interface MapPanelProps {
   initialBounds?: [[number, number], [number, number]] | null;
   /** Programmatic recentre (place-search hit / saved location auto-load). */
   center?: {lat: number; lon: number; zoom?: number} | null;
+  /** Hide the mapped-records status badge (report-form location picker). */
+  hideStatus?: boolean;
 }
 
 export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -218,8 +220,10 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
     if (on) {
       const handler = (e: any) => {
         const p = e.latlng;
-        setLocationMarker({lat: p.lat, lon: p.lon});
-        pickCallbackRef.current?.(p.lat, p.lon);
+        // Leaflet LatLng exposes .lng (not .lon); a wrong property here made
+        // every map pick throw "Invalid LatLng object" before onPick fired.
+        setLocationMarker({lat: p.lat, lon: p.lng});
+        pickCallbackRef.current?.(p.lat, p.lng);
       };
       clickHandlerRef.current = handler;
       map.on('click', handler);
@@ -343,7 +347,8 @@ export function useMapPanel(containerRef: React.RefObject<HTMLDivElement | null>
 }
 
 export function MapPanel({data, onSelect, onViewportChange, large = false, fit = true, height,
-  locationMarker = null, pickMode = false, onPick, initialBounds = null, center = null}: MapPanelProps) {
+  locationMarker = null, pickMode = false, onPick, initialBounds = null, center = null,
+  hideStatus = false}: MapPanelProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const {ready, tileError, configError, devFallback, count, renderGeo, setOnViewport,
     setLocationMarker, setPickMode, fitInitial, centerOn} = useMapPanel(ref);
@@ -386,7 +391,8 @@ export function MapPanel({data, onSelect, onViewportChange, large = false, fit =
     <div className={'map-panel ' + (large ? 'large' : '') + (pickMode ? ' picking' : '')}>
       <div ref={ref} className="leaflet-container-host" style={height ? {height} : undefined} />
       {!ready && !configError && <span className="map-loading">Preparing map…</span>}
-      <MapStatus devFallback={devFallback} tileError={tileError} configError={configError} count={count} />
+      <MapStatus devFallback={devFallback} tileError={tileError} configError={configError}
+        count={hideStatus ? null : count} />
       <div className="map-caption">{captions(devFallback ? 'OpenStreetMap (development fallback)' : 'MapTiler')}</div>
     </div>
   );
