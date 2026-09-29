@@ -227,6 +227,17 @@ fieldset legend{font-size:12px;font-weight:700;color:var(--muted);padding:0 6px}
 .place-results button span{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .place-results strong{font-size:13px}
 .place-results small{font-size:11px;color:var(--muted)}
+.area-picker{position:relative}
+.area-picker .area-search{width:100%;border:1px solid var(--line);border-radius:11px;padding:9px 11px;font-size:14px;background:white;outline:0}
+.area-picker .area-search:focus{border-color:var(--green)}
+.area-results{position:absolute;z-index:20;top:calc(100% + 6px);left:0;right:0;list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:11px;overflow:auto;max-height:260px;background:white;box-shadow:0 8px 24px rgba(0,0,0,.1)}
+.area-results button{display:block;width:100%;text-align:left;padding:9px 12px;background:white;border-bottom:1px solid var(--line)}
+.area-results li:last-child button{border-bottom:0}
+.area-results button:hover{background:var(--paper)}
+.area-results .area-name{display:block;font-size:13px}
+.area-results small{font-size:11px;color:var(--muted)}
+.area-results .empty{padding:10px 12px;font-size:12px;color:var(--muted)}
+.follow-filter{margin-bottom:8px}
 .save-row{margin-top:14px}
 .saved-location{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#edf7f1;border:1px solid #bcdccb;border-radius:11px;padding:9px 12px;font-size:12px;color:#175c38}
 .saved-location span{display:flex;align-items:center;gap:7px}
