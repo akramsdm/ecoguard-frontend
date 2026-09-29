@@ -83,16 +83,43 @@ feature is broken when it is simply not deployed.
 
 ## Deploy (Vercel)
 
-Project `ecoguard` → `https://ecoguard.vercel.app`.
-Set `VITE_API_BASE_URL=https://ecoguard-api.vercel.app/api/v1` in the Vercel
-project for production, and set `VITE_MAPTILER_KEY` to your MapTiler key — the
-build fails without it. The workspace signs in against the live API and
-subscribes to `/api/v1/stream` (SSE) for realtime updates.
+This is a standard Vite SPA: `npm run build` (`tsc -b && vite build`) emits static
+assets into `dist/`, which is what Vercel serves. There is no server-side
+requirement, no SSR and no API of its own — `vercel.json` already sets
+`buildCommand: "npm run build"`, `outputDirectory: "dist"` and
+`framework: "vite"`. Routing is hash-based (`#/community/home`), so **no SPA
+rewrite is needed**.
 
-Note that Vercel has no SpeciesNet runtime, so production reports
-`image_assistance: "degraded"` and the app hides the suggestion flow. That is
-expected. Set `IMAGE_ASSISTANCE=disabled` on the Vercel API project to make
-that explicit.
+The API runs on **Railway**. The web app talks to it directly, cross-origin, with
+`credentials: 'include'` — the session cookie is `SameSite=None; Secure`, and the
+API's `CORS_ALLOWED_ORIGINS` must contain this Vercel origin or every write
+(sign-in included) is rejected with `403`.
+
+### Environment variables for Vercel
+
+All configuration is read from `VITE_*` variables at **build time**; nothing is
+hardcoded. Because they are baked into the bundle, changing one requires a
+redeploy, not just a restart.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | yes | API base including the version segment, e.g. `https://ecoguard-api.up.railway.app/api/v1`. Defaults to `/api/v1`, which is only correct when the API is served from the same origin. |
+| `VITE_MAPTILER_KEY` | yes | MapTiler API key. The build **fails** without it: production must never ship the OSM fallback. |
+| `VITE_MAP_TILE_PROVIDER` | no | `maptiler` (default). `osm` is development-only and also fails a production build. |
+| `VITE_MAPTILER_STYLE` | no | Raster style id, default `streets-v2`. |
+
+Set these in the Vercel project under **Settings → Environment Variables** (per
+environment: Production / Preview / Development). No `VITE_*` secret exists here —
+the MapTiler key is a public, origin-restricted client key by design.
+
+Vercel builds with the Node version from `engines.node` in `package.json`
+(`>=22.12.0`). If a build ever picks an unexpected runtime, pin it with a
+`.nvmrc`.
+
+Note: the API deployment decides whether image assistance exists. With
+`IMAGE_ASSISTANCE=disabled` (or an API built without the SpeciesNet wheels) the
+API reports `image_assistance: "disabled"` and the app hides the suggestion flow.
+That is expected, not a frontend misconfiguration.
 
 ## Live maps (step 5: basemaps, viewport fetching, realtime)
 
