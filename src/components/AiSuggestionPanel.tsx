@@ -14,9 +14,13 @@ export function AiSuggestionPanel({reportId, onUseSpecies}:{reportId:string; onU
   const [error, setError] = useState<string|null>(null);
   useEffect(()=>{
     let cancelled=false;
-    setLoading(true);
-    getReportPredictions(reportId).then(d=>{if(!cancelled){setData(d);setError(null);} }).catch(e=>{if(!cancelled) setError(String(e?.message||e));}).finally(()=>{if(!cancelled)setLoading(false);});
-    return ()=>{cancelled=true;};
+    let timer:any;
+    const fetch = () => {
+      setLoading(true);
+      getReportPredictions(reportId).then(d=>{if(!cancelled){setData(d);setError(null); const pending=d.items.some(i=>i.state==='pending'||i.state==='queued'); if(pending){ timer=setTimeout(fetch,5000);} } }).catch(e=>{if(!cancelled) setError(String(e?.message||e));}).finally(()=>{if(!cancelled)setLoading(false);});
+    };
+    fetch();
+    return ()=>{cancelled=true; if(timer) clearTimeout(timer);};
   },[reportId]);
   let body: React.ReactNode = null;
   if (loading) body = <p>Loading...</p>;
