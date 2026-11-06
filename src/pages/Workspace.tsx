@@ -1,6 +1,7 @@
 import React,{useState,useEffect} from 'react';
 import type {FormEvent,ReactNode} from 'react';
 import {AiSuggestionPanel} from '../components/AiSuggestionPanel';
+import {useApp} from '../lib/context';
 import {api,post,downloadExport,areasOsm,osmArea,setAreaActive} from '../lib/api';
 import {useData} from '../lib/useData';
 import {useMapData} from '../lib/useMapData';

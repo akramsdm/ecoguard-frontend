@@ -23,4 +23,3 @@ export function AiSuggestionPanel({reportId}:{reportId:string}){
   else body = <p>Analysis in progress or not available</p>;
   return <div className="card"><h3>AI suggestion</h3>{body}</div>;
 }
-"""
