@@ -1,7 +1,14 @@
 import React, {useEffect, useState} from 'react';
 import {getReportPredictions, ReportPredictions} from '../lib/api';
 
-export function AiSuggestionPanel({reportId}:{reportId:string}){
+function stateMessage(state: string | null): string {
+  if (state === 'pending' || state === 'queued') return 'Analysis in progress';
+  if (state === 'failed') return 'Analysis failed, review manually';
+  if (state === 'unavailable') return 'AI unavailable, review manually';
+  return 'No animal detected';
+}
+
+export function AiSuggestionPanel({reportId, onUseSpecies}:{reportId:string; onUseSpecies?:(species:string)=>void}){
   const [data, setData] = useState<ReportPredictions|null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string|null>(null);
@@ -17,7 +24,18 @@ export function AiSuggestionPanel({reportId}:{reportId:string}){
   else if (data && data.summary.best_species) body = (
     <>
       <p>{data.summary.best_species} • {Math.round((data.summary.best_confidence||0)*100)}% • {data.summary.priority||'none'}</p>
+      {data.summary.species_mismatch && <p className="notice">Reporter said X, AI suggests {data.summary.best_species}</p>}
+      <ul>
+        {data.items.map((it, i) => (
+          <li key={i}>
+            <img src="" alt="thumb" width={40} height={40} />
+            {it.species || stateMessage(it.state)} • {it.confidence != null ? Math.round(it.confidence*100)+'%' : ''}
+            {it.species == null && <span> — {stateMessage(it.state)}</span>}
+          </li>
+        ))}
+      </ul>
       <p>AI suggestions can be wrong. You make the final decision.</p>
+      {data.summary.best_species && onUseSpecies && <button onClick={()=>onUseSpecies(data.summary.best_species!)}>Use AI species</button>}
     </>
   );
   else body = <p>Analysis in progress or not available</p>;
