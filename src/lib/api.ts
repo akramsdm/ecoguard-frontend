@@ -9,6 +9,7 @@ export async function signIn(email:string,password:string,name?:string){const re
 export interface PredictionSummary {best_species:string|null;best_confidence:number|null;best_prediction_id:string|null;priority:'high'|'standard'|'low'|null;species_mismatch:boolean}
 export interface ReportPredictions {items:{evidence_id:string;state:string|null;species:string|null;confidence:number|null;priority:'high'|'standard'|'low'|null;suggested_decision:string|null;model_version:string|null;created_at:string|null}[];summary:PredictionSummary}
 export async function getReportPredictions(reportId:string):Promise<ReportPredictions>{return api<ReportPredictions>(`/reports/${reportId}/predictions`)}
+export async function downloadExport(){const r=await fetch(BASE+'/reports/export.csv',{credentials:'include'});if(!r.ok)throw new ApiError('Export unavailable.',r.status);const b=await r.blob();const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='ecoguard-reports.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),3000)}
 /** Browse OSM-backed geographic areas with optional search/filter/pagination. */
 export function areasOsm(params:Record<string,string|number|boolean|undefined>={}){
   const query=new URLSearchParams();

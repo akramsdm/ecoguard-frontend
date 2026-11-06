@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
-import {getReportPredictions, ReportPredictions} from '../lib/api';
+import {getReportPredictions} from '../lib/api';
+import type {ReportPredictions} from '../lib/api';
 
 function stateMessage(state: string | null): string {
   if (state === 'pending' || state === 'queued') return 'Analysis in progress';
